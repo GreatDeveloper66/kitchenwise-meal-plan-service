@@ -1,5 +1,5 @@
 {
-  "name": "ai-meal-planner-backend",
+  "name": "kitchenwise-meal-plan-service",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
