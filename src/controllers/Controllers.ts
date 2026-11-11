@@ -134,43 +134,47 @@ export const getMealPlanImages = async (req: Request<{}, {}, MealPlan>, res: Res
     return;
   }
 
-  const mealPlanImages: MealPlanImages = {
-    MealPlanImagesUrls: []
-  };
-
-  for (const meal of mealPlan.meals) {
-    const prompt = `Generate an image for the following meal: ${meal.name}. The meal consists of the following foods: ${meal.foods.map(food => food.name).join(', ')}. Please generate a visually appealing image that represents this meal.`;
-    try {
-      const response = await openaiClient.images.generate({
-        model: "dall-e-3",
-        prompt: prompt,
-        n: 1,
-        size: "1024x1024",
-        quality: "standard",
-        response_format: "url",
-      });
-      const imageUrl = response.data?.[0]?.url;
-      if (imageUrl) {
-        if(!isImageUrlCorrectFormat(imageUrl)){
-          console.error(`Failed to generate image for meal ${meal.name}: URL is not in the correct format`);
-          res.status(500).json({ success: false, error: `Failed to generate image for meal ${meal.name}: URL is not in the correct format` });
-        } else {
-          mealPlanImages.MealPlanImagesUrls.push({
-          mealImageUrl: imageUrl
-        });
-        }
-      } else {
-        console.error(`Failed to generate image for meal ${meal.name}: no URL returned`);
-        res.status(500).json({ success: false, error: `Failed to generate image for meal ${meal.name}: no URL returned` });
+  try {
+    // Generate all meal images in parallel; Promise.all keeps the URLs in meal order.
+    const imageUrls = await Promise.all(mealPlan.meals.map(async (meal) => {
+      try {
+        return await generateMealImageUrl(meal);
+      } catch (error) {
+        throw new Error(`Failed to generate image for meal ${meal.name}: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
       }
-    } catch (error) {
-      console.error(`Failed to generate image for meal ${meal.name}:`, error);
-      res.status(500).json({ success: false, error: `Failed to generate image for meal ${meal.name}: ${error instanceof Error ? error.message : 'Unknown error occurred'}` });
-    }
-  }
+    }));
 
-  res.status(200).json({ success: true, data: mealPlanImages });
+    const mealPlanImages: MealPlanImages = {
+      MealPlanImagesUrls: imageUrls.map((url) => ({ mealImageUrl: url }))
+    };
+    res.status(200).json({ success: true, data: mealPlanImages });
+  } catch (error) {
+    // Any failed meal fails the whole request, with exactly one response sent.
+    console.error(error);
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' });
+  }
 }
+
+// Returns a short-lived (about 1 hour) DALL-E image URL for one meal. Throws on failure.
+const generateMealImageUrl = async (meal: Meal): Promise<string> => {
+  const prompt = `Generate an image for the following meal: ${meal.name}. The meal consists of the following foods: ${meal.foods.map(food => food.name).join(', ')}. Please generate a visually appealing image that represents this meal.`;
+  const response = await openaiClient.images.generate({
+    model: "dall-e-3",
+    prompt: prompt,
+    n: 1,
+    size: "1024x1024",
+    quality: "standard",
+    response_format: "url",
+  });
+  const imageUrl = response.data?.[0]?.url;
+  if (!imageUrl) {
+    throw new Error('no URL returned');
+  }
+  if (!isValidImageUrl(imageUrl)) {
+    throw new Error('returned URL is not a valid https URL');
+  }
+  return imageUrl;
+};
 
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
@@ -208,7 +212,16 @@ const isMealPlan = (value: unknown): value is MealPlan => {
   );
 };
 
-const isImageUrlCorrectFormat = (value: unknown): value is string => typeof value === 'string' && value.startsWith('https://') && value.endsWith('.jpg');
+// DALL-E URLs are signed blob URLs ending in a query string (e.g. ...img-abc.png?st=...&sig=...),
+// so check that it parses as https rather than matching a file extension.
+const isValidImageUrl = (value: unknown): value is string => {
+  if (typeof value !== 'string') return false;
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
 
 
 const isStringArray = (value: unknown): value is string[] => {
