@@ -5,7 +5,7 @@ import { generateText } from 'ai';
 import OpenAI from 'openai';
 import { Request, Response } from 'express';
 import { ApiResponse, TestGPTRequest, TestDalleRequest, TestGPTResponse, TestDalleResponse } from '../data_types/index.js';
-import { DietaryProfile, MealPlan, MealPlanImages, MealPlanWithPrice, Meal, FoodItem } from '../data_types/index.js';
+import { DietaryProfile, MealPlan, MealPlanImages, MealPlanWithPrice, Meal, FoodItem, BUDGET_LEVELS } from '../data_types/index.js';
 import { generateMealPlan, generateMealPlanWithPrice } from '../helpers/helpers.js'; // Add .js extension
 // Initialize OpenAI client
 const openaiClient = new OpenAI({
@@ -58,27 +58,7 @@ export const testDalle = async (req: TestDalleRequest, res: TestDalleResponse): 
 
 // Function to generate meal plan based on dietary profile. Input DietaryProfile, output MealPlan
 
-const isStringArray = (value: unknown): value is string[] => {
-  return Array.isArray(value) && value.every(item => typeof item === 'string');
-};
 
-const isValidDietaryProfile = (body: unknown): body is DietaryProfile => {
-  if (typeof body !== 'object' || body === null) return false;
-  const candidate = body as Record<string, unknown>;
-  const allowedSex = ['male', 'female', 'other'];
-  const allowedActivity = ['sedentary', 'light', 'moderate', 'active', 'very active'];
-  const allowedBudget = ['low', 'normal', 'high'];
-
-  return (
-    typeof candidate.age === 'number' &&
-    allowedSex.includes(candidate.sex as string) &&
-    typeof candidate.weight === 'number' &&
-    typeof candidate.height === 'number' &&
-    allowedActivity.includes(candidate.activityLevel as string) &&
-    isStringArray(candidate.dietaryPreferences) &&
-    allowedBudget.includes(candidate.budgetLevel as string)
-  );
-};
 
 export const getMealPlanFromDietaryProfile = async (req: Request<{}, {}, DietaryProfile>, res: Response<ApiResponse<MealPlan>>): Promise<void> => {
   if (!isValidDietaryProfile(req.body)) {
@@ -142,42 +122,6 @@ export const getMealPlanWithPriceFromDietaryProfile = async (req: Request<{}, {}
   }
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
-
-const isFoodItem = (value: unknown): value is FoodItem => {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.id === 'string' &&
-    typeof value.name === 'string' &&
-    typeof value.calories === 'number' &&
-    typeof value.protein === 'number' &&
-    typeof value.carbs === 'number' &&
-    typeof value.fat === 'number' &&
-    (typeof value.quantity === 'undefined' || typeof value.quantity === 'string')
-  );
-};
-
-const isMeal = (value: unknown): value is Meal => {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.id === 'string' &&
-    (value.name === 'breakfast' || value.name === 'lunch' || value.name === 'dinner') &&
-    Array.isArray(value.foods) &&
-    value.foods.every(isFoodItem)
-  );
-};
-
-const isMealPlan = (value: unknown): value is MealPlan => {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.id === 'string' &&
-    typeof value.date === 'string' &&
-    Array.isArray(value.meals) &&
-    value.meals.every(isMeal)
-  );
-};
-
-const isImageUrlCorrectFormat = (value: unknown): value is string => typeof value === 'string' && value.startsWith('https://') && value.endsWith('.jpg');
 
 export const getMealPlanImages = async (req: Request<{}, {}, MealPlan>, res: Response<ApiResponse<MealPlanImages>>): Promise<void> => {
   const mealPlan = req.body;
@@ -228,3 +172,63 @@ export const getMealPlanImages = async (req: Request<{}, {}, MealPlan>, res: Res
   res.status(200).json({ success: true, data: mealPlanImages });
 }
 
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
+
+const isFoodItem = (value: unknown): value is FoodItem => {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.name === 'string' &&
+    typeof value.calories === 'number' &&
+    typeof value.protein === 'number' &&
+    typeof value.carbs === 'number' &&
+    typeof value.fat === 'number' &&
+    (typeof value.quantity === 'undefined' || typeof value.quantity === 'string')
+  );
+};
+
+const isMeal = (value: unknown): value is Meal => {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    (value.name === 'breakfast' || value.name === 'lunch' || value.name === 'dinner') &&
+    Array.isArray(value.foods) &&
+    value.foods.every(isFoodItem)
+  );
+};
+
+const isMealPlan = (value: unknown): value is MealPlan => {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.date === 'string' &&
+    Array.isArray(value.meals) &&
+    value.meals.every(isMeal)
+  );
+};
+
+const isImageUrlCorrectFormat = (value: unknown): value is string => typeof value === 'string' && value.startsWith('https://') && value.endsWith('.jpg');
+
+
+const isStringArray = (value: unknown): value is string[] => {
+  return Array.isArray(value) && value.every(item => typeof item === 'string');
+};
+
+const isValidDietaryProfile = (body: unknown): body is DietaryProfile => {
+  if (typeof body !== 'object' || body === null) return false;
+  const candidate = body as Record<string, unknown>;
+  const allowedSex = ['male', 'female', 'other'];
+  const allowedActivity = ['sedentary', 'light', 'moderate', 'active', 'very active'];
+  const allowedBudget: readonly string[] = BUDGET_LEVELS;
+
+  return (
+    typeof candidate.age === 'number' &&
+    allowedSex.includes(candidate.sex as string) &&
+    typeof candidate.weight === 'number' &&
+    typeof candidate.height === 'number' &&
+    allowedActivity.includes(candidate.activityLevel as string) &&
+    isStringArray(candidate.dietaryPreferences) &&
+    allowedBudget.includes(candidate.budgetLevel as string)
+  );
+};

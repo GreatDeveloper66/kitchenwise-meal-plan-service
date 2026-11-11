@@ -1,5 +1,10 @@
 import { Request, Response } from 'express';
 
+// Must match budgetLevel in kitchenwise-diet-profile-service/models/nutritionalProfile.js,
+// which stores the profiles this service receives.
+export const BUDGET_LEVELS = ["Minimal", "Normal", "Premium"] as const;
+export type BudgetLevel = typeof BUDGET_LEVELS[number];
+
 export type DietaryProfile = {
   age: number;
   sex: "male" | "female" | "other";
@@ -7,7 +12,7 @@ export type DietaryProfile = {
   height: number;
   activityLevel: "sedentary" | "light" | "moderate" | "active" | "very active";
   dietaryPreferences: string[];
-  budgetLevel: "low" | "normal" | "high";
+  budgetLevel: BudgetLevel;
 }
 
 export type FoodItem = {
