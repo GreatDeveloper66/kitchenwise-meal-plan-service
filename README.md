@@ -15,61 +15,105 @@ This service receives a user's dietary profile and generates a fully structured 
 - **Runtime:** Node.js
 - **Language:** TypeScript
 - **Framework:** Express
-- **AI Integration:** OpenAI API
+- **AI Integration:** OpenAI API (`gpt-4o` for text via the Vercel AI SDK, DALL-E 3 for images)
 
 ---
 
 ## Features
 
-- Generates personalized meal plans based on user dietary profiles
-- Structures meal plans with daily meals and nutritional breakdowns
-- Supports multiple diet types including keto, vegan, vegetarian, and high protein
+- Generates personalized meal plans based on a diet profile
+- Meal plans with an estimated price per meal (7 breakfasts, 7 lunches, 7 dinners)
+- Supports diet preferences such as Keto, Vegan, Vegetarian, and High Protein
 - Budget-aware meal plan generation
+- AI-generated images for each meal
 
 ---
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-| -------- | ---------- | ------------- |
-| POST | `/api/test-gpt` | Test GPT route |
-| POST | `/api/test-dalle` | Test Dalle route |
-| POST | `/api/meal-plan` | Call OpenAI to get comprehensive meal plan based on nutritional profile |
-| POST | `/api/meal-plan-images` | Call OpenAI to get AI images for each meal in meal plan |
-| POST | `/api/meal-plan-with-price` | Call OpenAI to get AI meal plan with prices |
+No authentication is required. All routes accept and return JSON.
 
-app.post('/api/test-gpt', testGPT);
-app.post('/api/test-dalle', testDalle);
-app.post('/api/meal-plan', getMealPlanFromDietaryProfile);
-app.post('/api/meal-plan-images', getMealPlanImages);
-app.post('/api/meal-plan-with-price')
+| Method | Endpoint | Body | Description |
+| -------- | ---------- | ---- | ------------- |
+| GET | `/` | — | Returns the text "Meal Planner API is running" |
+| POST | `/api/meal-plan` | Diet profile | Generate a meal plan |
+| POST | `/api/meal-plan-with-price` | Diet profile | Generate a 21-meal plan with a price on each meal |
+| POST | `/api/meal-plan-images` | Meal plan | Generate one image per meal |
+| POST | `/api/test-gpt` | `{ "prompt": string }` (optional) | Test the OpenAI text connection |
+| POST | `/api/test-dalle` | `{ "prompt": string }` (optional) | Test the DALL-E connection |
+
 ---
 
-## Meal Plan Response Schema
+## Request Schema: Diet Profile
+
+Used by `/api/meal-plan` and `/api/meal-plan-with-price`. It matches the profile stored by kitchenwise-diet-profile-service, so a stored profile can be posted as-is. Enum values are case-sensitive.
+
+```typescript
+{
+  age: number
+  sex: "male" | "female" | "other"
+  weight: number   // kg
+  height: number   // cm
+  activityLevel: "sedentary" | "light" | "moderate" | "active" | "very active"
+  dietaryPreferences: string[]   // e.g. ["Vegetarian"]
+  budgetLevel: "Minimal" | "Normal" | "Premium"
+}
+```
+
+---
+
+## Response Envelope
+
+Every meal plan and image route wraps its result:
+
+```typescript
+// success
+{ success: true, data: <result> }
+// failure (400 invalid body, 404 no usable AI output, 500 OpenAI or server error)
+{ success: false, error: string }
+```
+
+Unwrap `data` before passing a meal plan to `/api/meal-plan-images`, kitchenwise-plan-storage-service, or kitchenwise-recipe-service.
+
+## Meal Plan Schema
+
+`data` for `/api/meal-plan`, and the request body for `/api/meal-plan-images`:
 
 ```typescript
 {
   id: string
   date: string
-  meals: [
-    {
+  meals: {
+    id: string
+    name: "breakfast" | "lunch" | "dinner"
+    foods: {
       id: string
       name: string
-      foods: [
-        {
-          id: string
-          name: string
-          calories: number
-          protein: number
-          carbs: number
-          fat: number
-          quantity: string
-        }
-      ]
-    }
-  ]
+      calories: number
+      protein: number
+      carbs: number
+      fat: number
+      quantity?: string
+    }[]
+  }[]
 }
 ```
+
+`/api/meal-plan-with-price` returns the same shape with a `price: number` on each meal. The prompt also asks the model for a top-level `totalPrice`, which may be present but is not validated.
+
+## Meal Plan Images Schema
+
+`data` for `/api/meal-plan-images`, one entry per meal in the same order as `meals`:
+
+```typescript
+{
+  MealPlanImagesUrls: { mealImageUrl: string }[]
+}
+```
+
+The URLs are temporary DALL-E links that expire after about an hour. Display them; don't store them. If any image fails, the whole request returns 500.
+
+The test routes return `{ text }` (`/api/test-gpt`) and `{ imageUrl }` or `{ error }` (`/api/test-dalle`). They do not use the envelope.
 
 ---
 
@@ -78,10 +122,11 @@ app.post('/api/meal-plan-with-price')
 Create a `.env` file in the root of the project with the following variables:
 
 ```env
-PORT=3003
 OPENAI_API_KEY=your_openai_api_key
-JWT_SECRET=your_jwt_secret
+PORT=3000   # optional, defaults to 3000
 ```
+
+This service does not verify JWTs, so it does not need `JWT_SECRET`.
 
 ---
 
@@ -89,7 +134,7 @@ JWT_SECRET=your_jwt_secret
 
 ### Prerequisites
 
-- Node.js v18+
+- Node.js 26.x (pinned in `package.json` `engines` for Vercel)
 - OpenAI API key
 
 ### Installation
@@ -103,15 +148,17 @@ npm install
 ### Development
 
 ```bash
-npm run dev
+npm run dev    # tsx watch on src/server.ts, http://localhost:3000
 ```
 
 ### Production
 
 ```bash
-npm run build
-npm start
+npm run build  # tsc to dist/
+npm start      # node dist/server.js
 ```
+
+The service does not enable CORS, so a browser app on another origin cannot call it directly yet.
 
 ---
 
