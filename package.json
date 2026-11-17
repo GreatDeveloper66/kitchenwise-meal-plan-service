@@ -9,7 +9,7 @@
     "vercel-build": "npm run build"
   },
   "engines": {
-    "node": "20.x"
+    "node": "26.x"
   },
   "dependencies": {
     "@ai-sdk/openai": "latest",
