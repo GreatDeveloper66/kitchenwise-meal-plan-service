@@ -158,7 +158,7 @@ npm run build  # tsc to dist/
 npm start      # node dist/server.js
 ```
 
-The service does not enable CORS, so a browser app on another origin cannot call it directly yet.
+CORS is enabled for all origins, so the browser frontend can call it directly.
 
 ---
 

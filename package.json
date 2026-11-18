@@ -14,11 +14,13 @@
   "dependencies": {
     "@ai-sdk/openai": "latest",
     "ai": "latest",
+    "cors": "^2.8.6",
     "dotenv": "latest",
     "express": "latest",
     "openai": "latest"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/node": "^20.0.0",
     "tsx": "^4.0.0",

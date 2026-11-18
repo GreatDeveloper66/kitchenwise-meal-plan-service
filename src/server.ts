@@ -2,11 +2,14 @@
 import dotenv from 'dotenv';
 dotenv.config();
 import express, { Request, Response } from 'express';
+import cors from 'cors';
 import { testGPT, testDalle, getMealPlanImages, getMealPlanFromDietaryProfile, getMealPlanWithPriceFromDietaryProfile } from './controllers/Controllers.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Allow browser calls from any origin, like user-auth, diet-profile, and plan-storage.
+app.use(cors());
 app.use(express.json());
 
 app.get('/', (req: Request, res: Response) => {

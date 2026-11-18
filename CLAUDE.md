@@ -2,7 +2,7 @@
 
 Generates meal plans from a diet profile using the OpenAI API. Branch: `main`. Deployed at https://ai-meal-planner-backend.vercel.app (old name, do not rename).
 
-Stack: Node.js 26.x (`engines` in `package.json`; Vercel dropped 20.x), Express, TypeScript, OpenAI (`gpt-4o` via the Vercel AI SDK, DALL-E 3 via the `openai` client). Routes in `src/server.ts`, handlers and validators in `src/controllers/Controllers.ts`, prompts in `src/helpers/helpers.ts`, types in `src/data_types/index.ts`.
+Stack: Node.js 26.x (`engines` in `package.json`; Vercel dropped 20.x), Express (with `cors()`, all origins), TypeScript, OpenAI (`gpt-4o` via the Vercel AI SDK, DALL-E 3 via the `openai` client). Routes in `src/server.ts`, handlers and validators in `src/controllers/Controllers.ts`, prompts in `src/helpers/helpers.ts`, types in `src/data_types/index.ts`.
 
 ## Routes (no auth)
 
@@ -26,7 +26,6 @@ Env: `OPENAI_API_KEY`, optional `PORT` (default 3000). No `JWT_SECRET`; this ser
 ## Known issues
 
 - `/api/meal-plan-images` was fixed (it used to reject every image) but has not been tested with a real OpenAI key. Images are generated in parallel, one per meal, so a 21-meal plan may hit DALL-E rate limits. URLs expire after about an hour; don't store them. Remove this note after a real call works.
-- No CORS middleware, so browser calls from the frontend will be blocked.
 - `test-gpt` returns `{ text }` on errors too, instead of `{ error }`.
 - `/api/meal-plan-with-price` asks the model for `totalPrice`, but the type and validation ignore it.
 
