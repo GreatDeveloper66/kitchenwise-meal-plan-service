@@ -3,6 +3,7 @@ dotenv.config();
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 import OpenAI from 'openai';
+import { put } from '@vercel/blob';
 import { Request, Response } from 'express';
 import { ApiResponse, TestGPTRequest, TestDalleRequest, TestGPTResponse, TestDalleResponse } from '../data_types/index.js';
 import { DietaryProfile, MealPlan, MealPlanImages, MealPlanWithPrice, Meal, FoodItem, BUDGET_LEVELS } from '../data_types/index.js';
@@ -123,6 +124,10 @@ export const getMealPlanWithPriceFromDietaryProfile = async (req: Request<{}, {}
 };
 
 
+// One day is three meals. The cap keeps a single unauthenticated request from
+// generating (and paying for) dozens of images.
+const MAX_IMAGES_PER_REQUEST = 3;
+
 export const getMealPlanImages = async (req: Request<{}, {}, MealPlan>, res: Response<ApiResponse<MealPlanImages>>): Promise<void> => {
   const mealPlan = req.body;
 
@@ -134,11 +139,26 @@ export const getMealPlanImages = async (req: Request<{}, {}, MealPlan>, res: Res
     return;
   }
 
+  if (mealPlan.meals.length > MAX_IMAGES_PER_REQUEST) {
+    res.status(400).json({
+      success: false,
+      error: `Too many meals. At most ${MAX_IMAGES_PER_REQUEST} images can be generated per request.`
+    });
+    return;
+  }
+
+  // Check storage before calling DALL-E, so we never pay for images we can't keep
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    console.error('BLOB_READ_WRITE_TOKEN is not set; cannot store meal images.');
+    res.status(500).json({ success: false, error: 'Image storage is not configured on the server.' });
+    return;
+  }
+
   try {
     // Generate all meal images in parallel; Promise.all keeps the URLs in meal order.
     const imageUrls = await Promise.all(mealPlan.meals.map(async (meal) => {
       try {
-        return await generateMealImageUrl(meal);
+        return await generateAndStoreMealImage(meal, mealPlan.id);
       } catch (error) {
         throw new Error(`Failed to generate image for meal ${meal.name}: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
       }
@@ -155,8 +175,15 @@ export const getMealPlanImages = async (req: Request<{}, {}, MealPlan>, res: Res
   }
 }
 
-// Returns a short-lived (about 1 hour) DALL-E image URL for one meal. Throws on failure.
-const generateMealImageUrl = async (meal: Meal): Promise<string> => {
+/** Keeps only characters that are safe in a blob path, since ids come from the request body. */
+const toPathSegment = (value: string): string => value.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'unknown';
+
+/**
+ * Generates one DALL-E image for a meal and stores it in Vercel Blob.
+ * Returns a permanent public URL. (DALL-E's own URLs expire after about an hour,
+ * so they can't be saved with the plan.) Throws on failure.
+ */
+const generateAndStoreMealImage = async (meal: Meal, planId: string): Promise<string> => {
   const prompt = `Generate an image for the following meal: ${meal.name}. The meal consists of the following foods: ${meal.foods.map(food => food.name).join(', ')}. Please generate a visually appealing image that represents this meal.`;
   const response = await openaiClient.images.generate({
     model: "dall-e-3",
@@ -164,16 +191,25 @@ const generateMealImageUrl = async (meal: Meal): Promise<string> => {
     n: 1,
     size: "1024x1024",
     quality: "standard",
-    response_format: "url",
+    // Ask for the image bytes instead of a temporary URL, so they can go straight to storage
+    response_format: "b64_json",
   });
-  const imageUrl = response.data?.[0]?.url;
-  if (!imageUrl) {
-    throw new Error('no URL returned');
+  const imageBase64 = response.data?.[0]?.b64_json;
+  if (!imageBase64) {
+    throw new Error('no image data returned');
   }
-  if (!isValidImageUrl(imageUrl)) {
-    throw new Error('returned URL is not a valid https URL');
+
+  // Unguessable path: the random suffix stops anyone from listing or predicting other users' images
+  const pathname = `meal-images/${toPathSegment(planId)}/${toPathSegment(meal.id)}-${meal.name}.png`;
+  const blob = await put(pathname, Buffer.from(imageBase64, 'base64'), {
+    access: 'public',
+    contentType: 'image/png',
+    addRandomSuffix: true,
+  });
+  if (!isValidImageUrl(blob.url)) {
+    throw new Error('image storage returned an invalid URL');
   }
-  return imageUrl;
+  return blob.url;
 };
 
 
@@ -212,8 +248,7 @@ const isMealPlan = (value: unknown): value is MealPlan => {
   );
 };
 
-// DALL-E URLs are signed blob URLs ending in a query string (e.g. ...img-abc.png?st=...&sig=...),
-// so check that it parses as https rather than matching a file extension.
+// Checks that a stored image URL parses as https, rather than matching a file extension.
 const isValidImageUrl = (value: unknown): value is string => {
   if (typeof value !== 'string') return false;
   try {

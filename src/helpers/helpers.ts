@@ -114,7 +114,7 @@ Please put your answer in the following json format:
   });
 };
 
-//create helper function that gets meal plan with price from dietary profile. It should return 7 breakfast meals, 7 lunch meals and 7 dinner meals all in the format of the MealPlanWithPrice type. The prompt should be similar to the one in generateMealPlan but it should also include the price of each meal and the total price of the meal plan. The response should be in the following json format:
+// Generates a priced meal plan for ONE day: exactly one breakfast, one lunch, and one dinner, in the format of the MealPlanWithPrice type. The prompt should be similar to the one in generateMealPlan but it should also include the price of each meal and the total price of the meal plan. The response should be in the following json format:
 /*
 {
   "id": "string",
@@ -151,7 +151,8 @@ export const generateMealPlanWithPrice = async (profile: DietaryProfile): Promis
   Budget Level: ${profile.budgetLevel}.
 Respond with valid JSON only. Do not include any explanation, markdown, or text outside the JSON object.
 The meal plan should meet the person's dietary needs and preferences while staying within their calorie and financial budget.
-Please return 7 breakfast meals, 7 lunch meals and 7 dinner meals. The response should be in the following json format:
+The plan covers ONE day. Return exactly three meals, in this order: one breakfast, one lunch, and one dinner.
+Give each meal a "price" in US dollars for its ingredients, and set "totalPrice" to the sum of the three meal prices.
 Please put your answer in the following json format:
 {
   "id": "string",
