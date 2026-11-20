@@ -178,21 +178,26 @@ export const getMealPlanImages = async (req: Request<{}, {}, MealPlan>, res: Res
 /** Keeps only characters that are safe in a blob path, since ids come from the request body. */
 const toPathSegment = (value: string): string => value.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'unknown';
 
+// DALL-E 3 was retired from the API on May 12, 2026. GPT image models replace it. They
+// always return base64 (no URLs, and no `response_format` parameter). OpenAI retires image
+// models often, so the model can be changed with OPENAI_IMAGE_MODEL without a code change.
+const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1-mini';
+
 /**
- * Generates one DALL-E image for a meal and stores it in Vercel Blob.
- * Returns a permanent public URL. (DALL-E's own URLs expire after about an hour,
- * so they can't be saved with the plan.) Throws on failure.
+ * Generates one image for a meal and stores it in Vercel Blob.
+ * Returns a permanent public URL. Throws on failure.
  */
 const generateAndStoreMealImage = async (meal: Meal, planId: string): Promise<string> => {
   const prompt = `Generate an image for the following meal: ${meal.name}. The meal consists of the following foods: ${meal.foods.map(food => food.name).join(', ')}. Please generate a visually appealing image that represents this meal.`;
   const response = await openaiClient.images.generate({
-    model: "dall-e-3",
+    model: IMAGE_MODEL,
     prompt: prompt,
     n: 1,
     size: "1024x1024",
-    quality: "standard",
-    // Ask for the image bytes instead of a temporary URL, so they can go straight to storage
-    response_format: "b64_json",
+    // Shown as small cards, so medium quality and compressed WebP keep cost and file size down
+    quality: "medium",
+    output_format: "webp",
+    output_compression: 80,
   });
   const imageBase64 = response.data?.[0]?.b64_json;
   if (!imageBase64) {
@@ -200,10 +205,10 @@ const generateAndStoreMealImage = async (meal: Meal, planId: string): Promise<st
   }
 
   // Unguessable path: the random suffix stops anyone from listing or predicting other users' images
-  const pathname = `meal-images/${toPathSegment(planId)}/${toPathSegment(meal.id)}-${meal.name}.png`;
+  const pathname = `meal-images/${toPathSegment(planId)}/${toPathSegment(meal.id)}-${meal.name}.webp`;
   const blob = await put(pathname, Buffer.from(imageBase64, 'base64'), {
     access: 'public',
-    contentType: 'image/png',
+    contentType: 'image/webp',
     addRandomSuffix: true,
   });
   if (!isValidImageUrl(blob.url)) {
